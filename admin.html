@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Admin - Keluhan</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="form-wrapper">
+    <div class="form-container" style="max-width:950px;">
+      <div class="logo"></div>
+      <h2>📊 Dashboard Keluhan</h2>
+      <p class="subtitle">Daftar semua keluhan pengguna</p>
+
+      <!-- 🔎 Filter dan Search -->
+      <div class="filter-bar">
+        <input type="text" id="searchInput" placeholder="🔎 Cari nama/email...">
+        <input type="date" id="filterDate">
+        <button id="exportBtn">⬇️ Export ke CSV</button>
+      </div>
+
+      <table id="keluhanTable">
+        <thead>
+          <tr>
+            <th>Nama</th>
+            <th>Email</th>
+            <th>Pesan</th>
+            <th>Bukti</th>
+            <th>Waktu</th>
+            <th>Aksi</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, orderBy, query, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+
+    // 🔑 Config Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyBaVcXJjUEoaVhLsqPCc60KaqrNuHmimAM",
+      authDomain: "keluhan-app.firebaseapp.com",
+      projectId: "keluhan-app",
+      storageBucket: "keluhan-app.appspot.com",
+      messagingSenderId: "367564642219",
+      appId: "1:367564642219:web:b238cfd81eb1689ee624ee",
+      measurementId: "G-CG0D4T9C6X"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let allKeluhan = []; // simpan data global
+
+    async function loadKeluhan() {
+      const keluhanTable = document.querySelector("#keluhanTable tbody");
+      keluhanTable.innerHTML = "<tr><td colspan='6'>⏳ Memuat data...</td></tr>";
+      allKeluhan = [];
+
+      try {
+        const q = query(collection(db, "keluhan"), orderBy("created_at", "desc"));
+        const querySnapshot = await getDocs(q);
+
+        keluhanTable.innerHTML = "";
+        querySnapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          const rowData = {
+            id: docSnap.id,
+            nama: data.nama,
+            email: data.email,
+            pesan: data.pesan,
+            file: data.file || "",
+            waktu: data.created_at?.toDate().toLocaleString("id-ID"),
+            waktuDate: data.created_at?.toDate()
+          };
+          allKeluhan.push(rowData);
+        });
+
+        renderTable(allKeluhan);
+      } catch (error) {
+        console.error("Error load:", error);
+        keluhanTable.innerHTML = "<tr><td colspan='6'>❌ Gagal memuat data.</td></tr>";
+      }
+    }
+
+    // Render tabel dengan data
+    function renderTable(data) {
+      const keluhanTable = document.querySelector("#keluhanTable tbody");
+      keluhanTable.innerHTML = "";
+
+      if (data.length === 0) {
+        keluhanTable.innerHTML = "<tr><td colspan='6'>⚠️ Tidak ada data ditemukan.</td></tr>";
+        return;
+      }
+
+      data.forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${row.nama}</td>
+          <td>${row.email}</td>
+          <td>${row.pesan}</td>
+          <td>${row.file ? `<a href="${row.file}" target="_blank">Lihat</a>` : "-"}</td>
+          <td>${row.waktu}</td>
+          <td><button class="deleteBtn" data-id="${row.id}">🗑 Hapus</button></td>
+        `;
+        keluhanTable.appendChild(tr);
+      });
+
+      // Event delete
+      document.querySelectorAll(".deleteBtn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          if (confirm("Yakin ingin hapus data ini?")) {
+            await deleteDoc(doc(db, "keluhan", btn.dataset.id));
+            loadKeluhan();
+          }
+        });
+      });
+    }
+
+    // 🔎 Pencarian & Filter
+    document.getElementById("searchInput").addEventListener("input", applyFilters);
+    document.getElementById("filterDate").addEventListener("change", applyFilters);
+
+    function applyFilters() {
+      const searchText = document.getElementById("searchInput").value.toLowerCase();
+      const filterDate = document.getElementById("filterDate").value;
+
+      let filtered = allKeluhan.filter(item => {
+        const matchSearch =
+          item.nama.toLowerCase().includes(searchText) ||
+          item.email.toLowerCase().includes(searchText);
+
+        let matchDate = true;
+        if (filterDate) {
+          const selectedDate = new Date(filterDate);
+          matchDate = item.waktuDate.toDateString() === selectedDate.toDateString();
+        }
+
+        return matchSearch && matchDate;
+      });
+
+      renderTable(filtered);
+    }
+
+    // Export ke CSV
+    document.getElementById("exportBtn").addEventListener("click", () => {
+      if (allKeluhan.length === 0) {
+        alert("Tidak ada data untuk diexport");
+        return;
+      }
+
+      let csvContent = "data:text/csv;charset=utf-8,"
+        + ["Nama,Email,Pesan,Bukti,Waktu"]
+        + "\n"
+        + allKeluhan.map(e =>
+            `"${e.nama}","${e.email}","${e.pesan.replace(/"/g, '""')}","${e.file}","${e.waktu}"`
+          ).join("\n");
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "keluhan.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+
+    loadKeluhan();
+  </script>
+</body>
+</html>
